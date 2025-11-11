@@ -1,0 +1,26 @@
+name: Slack Notifications
+
+on:
+  push:
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send message to Slack
+        run: |
+          payload=$(cat <<EOF
+          {
+            "text": ":rocket: New push to *TechGenx* repo!\n
+            *Pusher:* $GITHUB_ACTOR\n
+            *Branch:* ${GITHUB_REF#refs/heads/}\n
+            *Commit Message:* $(echo "${{ github.event.head_commit.message }}")"
+          }
+          EOF
+          )
+          curl -X POST -H 'Content-type: application/json' \
+            --data "$payload" \
+            ${{ secrets.SLACK_WEBHOOK_URL }}
+
+
