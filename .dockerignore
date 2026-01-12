@@ -1,0 +1,23 @@
+# dependencies
+node_modules
+
+# build output
+.next
+dist
+
+# git & github
+.git
+.github
+.gitignore
+
+# environment & secrets
+.env
+
+# logs & misc
+npm-debug.log
+.DS_Store
+*.txt
+
+# local configs not needed inside image
+README.md
+
