@@ -65,8 +65,9 @@ export default function CourseDetailPage({
       </div>
     );
 
-  const handleEnroll = () => {
-    enrollCourse(course.title);
+  const handleEnroll = async () => {
+    const success = await enrollCourse(course.title);
+    if (!success) alert("Unable to enroll right now. Please try again.");
   };
 
   return (

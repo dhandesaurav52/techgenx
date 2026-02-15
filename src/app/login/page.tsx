@@ -11,10 +11,15 @@ export default function LoginPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const success = login(email, password);
+    setSubmitting(true);
+
+    const success = await login(email, password);
+    setSubmitting(false);
+
     if (success) {
       alert("Login successful!");
       router.push("/");
@@ -49,19 +54,17 @@ export default function LoginPage() {
             className="border border-gray-700 bg-gray-700 px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 text-white placeholder-gray-400"
             required
           />
-          <Link
-            href="#"
-            className="text-sm text-blue-400 hover:underline mt-1 self-end"
-          >
+          <Link href="#" className="text-sm text-blue-400 hover:underline mt-1 self-end">
             Forgot Password?
           </Link>
         </div>
 
         <button
           type="submit"
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
+          disabled={submitting}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-60"
         >
-          Login
+          {submitting ? "Logging in..." : "Login"}
         </button>
 
         <p className="text-sm text-gray-300 text-center mt-2">

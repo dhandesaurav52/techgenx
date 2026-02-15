@@ -6,31 +6,68 @@ First, run the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Backend API + MySQL schema
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+This app now uses a MySQL database (AWS RDS-compatible) for all backend entities.
 
-## Learn More
+### Required tables
+The schema includes all requested entities/fields:
 
-To learn more about Next.js, take a look at the following resources:
+- **Users**: `id`, `name`, `email`, `passwordHash`, `createdAt`
+- **Sessions**: `sessionId`, `userId`, `expiresAt`
+- **Courses**: `courseId`, `title`, `description`, `price`, `createdAt`
+- **Enrollments**: `enrollmentId`, `userId`, `courseId`, `enrolledAt`
+- **Contacts**: `contactId`, `name`, `email`, `message`, `submittedAt`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Migrations / SQL scripts
+- Base schema: `database/schema.sql`
+- Migration copy: `database/migrations/001_init_schema.sql`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Apply schema
 
-## Deploy on Vercel
+```bash
+mysql -h <rds-endpoint> -u <user> -p < database/schema.sql
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### `.env` setup for AWS RDS
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+A root `.env` file is included with all required app + RDS variables.
+Before private deployment, replace these values:
+
+- `DB_HOST` (your RDS endpoint)
+- `DB_USER`
+- `DB_PASSWORD`
+- `DB_NAME`
+
+Optional:
+- `DB_SSL=true` for encrypted RDS connections
+- `SESSION_TTL_HOURS` to control session expiry
+
+### API routes
+- `POST /api/auth/signup`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET /api/me`
+- `PATCH /api/me/settings`
+- `GET /api/courses`
+- `GET /api/courses/:slug` (slug is generated from title in backend)
+- `GET /api/enrollments`
+- `POST /api/enrollments`
+- `POST /api/contact`
+
+### Security note
+Passwords are now stored as hashed values in `passwordHash` (using Node crypto scrypt). For production hardening, consider managed secret rotation and stricter TLS verification for RDS.
+
+## Docker
+
+### Run with Docker Compose
+
+```bash
+docker compose -f compose-docker.yaml up --build
+```
+
+This starts only the `app` container on `http://localhost:3000` and connects it to your external AWS RDS MySQL database using values from `.env`.
