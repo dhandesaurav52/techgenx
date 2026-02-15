@@ -6,31 +6,80 @@ First, run the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Backend API + MySQL schema
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+This app now uses a MySQL database (AWS RDS-compatible) for all backend entities.
 
-## Learn More
+### Required tables
+The schema includes all requested entities/fields:
 
-To learn more about Next.js, take a look at the following resources:
+- **Users**: `id`, `name`, `email`, `passwordHash`, `createdAt`
+- **Sessions**: `sessionId`, `userId`, `expiresAt`
+- **Courses**: `courseId`, `title`, `description`, `price`, `createdAt`
+- **Enrollments**: `enrollmentId`, `userId`, `courseId`, `enrolledAt`
+- **Contacts**: `contactId`, `name`, `email`, `message`, `submittedAt`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Migrations / SQL scripts
+- Base schema: `database/schema.sql`
+- Migration copy: `database/migrations/001_init_schema.sql`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Apply schema
 
-## Deploy on Vercel
+```bash
+mysql -h <rds-endpoint> -u <user> -p < database/schema.sql
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Environment variables (`.env.local`)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```env
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=your_password
+DB_NAME=techgenx
+```
+
+
+### `.env` setup
+
+A root `.env` file is included with all required variables for app + DB + compose.
+Before private deployment, update these values with your real secrets/passkeys:
+
+- `DB_PASSWORD`
+- `MYSQL_PASSWORD`
+- `MYSQL_ROOT_PASSWORD`
+
+You can keep the same variable names and only replace values on your private machine.
+
+### API routes
+- `POST /api/auth/signup`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET /api/me`
+- `PATCH /api/me/settings`
+- `GET /api/courses`
+- `GET /api/courses/:slug` (slug is generated from title in backend)
+- `GET /api/enrollments`
+- `POST /api/enrollments`
+- `POST /api/contact`
+
+### Security note
+`passwordHash` column is in place, but current code still compares plain text values for compatibility. Move to hashed passwords (bcrypt/argon2) before production traffic.
+
+## Docker
+
+### Run with Docker Compose
+
+```bash
+docker compose -f compose-docker.yaml up --build
+```
+
+This starts:
+- `app` on `http://localhost:3000`
+- `mysql` on `localhost:3306`
+
+The MySQL container auto-runs `database/schema.sql` on first startup.
