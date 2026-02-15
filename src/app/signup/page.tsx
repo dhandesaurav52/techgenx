@@ -13,8 +13,9 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (password !== confirmPassword) {
@@ -22,11 +23,13 @@ export default function SignupPage() {
       return;
     }
 
-    const success = signup(fullName, email, password);
+    setSubmitting(true);
+    const success = await signup(fullName, email, password);
+    setSubmitting(false);
 
     if (success) {
       alert("Account created successfully!");
-      router.push("/"); // Redirect to homepage
+      router.push("/");
     } else {
       alert("Account with this email already exists!");
     }
@@ -75,9 +78,10 @@ export default function SignupPage() {
 
         <button
           type="submit"
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
+          disabled={submitting}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-60"
         >
-          Sign Up
+          {submitting ? "Creating account..." : "Sign Up"}
         </button>
 
         <p className="text-sm text-gray-300 text-center mt-2">

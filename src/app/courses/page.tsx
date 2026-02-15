@@ -40,7 +40,7 @@ export default function CoursesPage() {
     setEnrolled(user?.enrolledCourses ?? []);
   }, [user?.enrolledCourses]);
 
-  const handleEnrollClick = (e: React.MouseEvent, courseName: string, slug: string) => {
+  const handleEnrollClick = async (e: React.MouseEvent, courseName: string, slug: string) => {
     e.stopPropagation();
     e.preventDefault();
 
@@ -58,11 +58,13 @@ export default function CoursesPage() {
 
     // call enrollCourse from context (updates localStorage + accounts)
     if (enrollCourse) {
-      enrollCourse(courseName);
-      // optimistic UI update
-      setEnrolled((prev) => [...prev, courseName]);
-      // optionally show a tiny success message
-      alert(`Enrolled in "${courseName}" successfully!`);
+      const success = await enrollCourse(courseName);
+      if (success) {
+        setEnrolled((prev) => [...prev, courseName]);
+        alert(`Enrolled in "${courseName}" successfully!`);
+      } else {
+        alert("Enrollment failed. Please try again.");
+      }
     }
   };
 

@@ -15,6 +15,7 @@ declare module "mysql2/promise" {
     user?: string;
     password?: string;
     database?: string;
+    ssl?: { rejectUnauthorized?: boolean } | undefined;
     waitForConnections?: boolean;
     connectionLimit?: number;
     queueLimit?: number;

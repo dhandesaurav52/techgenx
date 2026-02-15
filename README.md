@@ -33,27 +33,19 @@ The schema includes all requested entities/fields:
 mysql -h <rds-endpoint> -u <user> -p < database/schema.sql
 ```
 
-### Environment variables (`.env.local`)
+### `.env` setup for AWS RDS
 
-```env
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=your_password
-DB_NAME=techgenx
-```
+A root `.env` file is included with all required app + RDS variables.
+Before private deployment, replace these values:
 
-
-### `.env` setup
-
-A root `.env` file is included with all required variables for app + DB + compose.
-Before private deployment, update these values with your real secrets/passkeys:
-
+- `DB_HOST` (your RDS endpoint)
+- `DB_USER`
 - `DB_PASSWORD`
-- `MYSQL_PASSWORD`
-- `MYSQL_ROOT_PASSWORD`
+- `DB_NAME`
 
-You can keep the same variable names and only replace values on your private machine.
+Optional:
+- `DB_SSL=true` for encrypted RDS connections
+- `SESSION_TTL_HOURS` to control session expiry
 
 ### API routes
 - `POST /api/auth/signup`
@@ -68,7 +60,7 @@ You can keep the same variable names and only replace values on your private mac
 - `POST /api/contact`
 
 ### Security note
-`passwordHash` column is in place, but current code still compares plain text values for compatibility. Move to hashed passwords (bcrypt/argon2) before production traffic.
+Passwords are now stored as hashed values in `passwordHash` (using Node crypto scrypt). For production hardening, consider managed secret rotation and stricter TLS verification for RDS.
 
 ## Docker
 
@@ -78,8 +70,4 @@ You can keep the same variable names and only replace values on your private mac
 docker compose -f compose-docker.yaml up --build
 ```
 
-This starts:
-- `app` on `http://localhost:3000`
-- `mysql` on `localhost:3306`
-
-The MySQL container auto-runs `database/schema.sql` on first startup.
+This starts only the `app` container on `http://localhost:3000` and connects it to your external AWS RDS MySQL database using values from `.env`.

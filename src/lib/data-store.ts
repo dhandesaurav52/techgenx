@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { RowDataPacket } from "mysql2";
 import { getPool } from "@/lib/mysql";
 import { ContactMessage, Course, Session, UserAccount } from "@/lib/types";
@@ -18,6 +18,27 @@ type CourseRow = RowDataPacket & {
   price: string;
   createdAt: string;
 };
+
+
+function hashPassword(rawPassword: string): string {
+  const salt = randomUUID().replace(/-/g, "").slice(0, 16);
+  const hash = scryptSync(rawPassword, salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(rawPassword: string, stored: string): boolean {
+  if (!stored.includes(":")) {
+    return rawPassword === stored;
+  }
+
+  const [salt, storedHash] = stored.split(":");
+  if (!salt || !storedHash) return false;
+
+  const candidate = scryptSync(rawPassword, salt, 64);
+  const storedBuffer = Buffer.from(storedHash, "hex");
+  if (candidate.length !== storedBuffer.length) return false;
+  return timingSafeEqual(candidate, storedBuffer);
+}
 
 function toSlug(title: string): string {
   return title
@@ -103,7 +124,7 @@ export async function createAccount(payload: {
   await pool.query(
     `INSERT INTO users (name, email, passwordHash, createdAt)
      VALUES (?, ?, ?, ?)`,
-    [payload.fullName.trim(), email, payload.password, createdAt]
+    [payload.fullName.trim(), email, hashPassword(payload.password), createdAt]
   );
 
   const insertedUser = await getUserByEmail(email);
@@ -120,7 +141,8 @@ export async function createAccount(payload: {
 export async function createSessionForUser(userId: number): Promise<Session> {
   const pool = getPool();
   const sessionId = randomUUID();
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const ttlHours = Number(process.env.SESSION_TTL_HOURS || 168);
+  const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000).toISOString();
 
   await pool.query("DELETE FROM sessions WHERE userId = ?", [userId]);
   await pool.query("INSERT INTO sessions (sessionId, userId, expiresAt) VALUES (?, ?, ?)", [
@@ -163,14 +185,15 @@ export async function verifyLogin(email: string, password: string): Promise<User
   const [rows] = await pool.query<UserRow[]>(
     `SELECT id, name, email, passwordHash, createdAt
      FROM users
-     WHERE email = ? AND passwordHash = ?
+     WHERE email = ?
      LIMIT 1`,
-    [normalizedEmail, password]
+    [normalizedEmail]
   );
 
   if (!rows.length) return null;
 
   const userRow = rows[0];
+  if (!verifyPassword(password, userRow.passwordHash)) return null;
   const enrolledCourses = await getEnrolledCoursesByUserId(userRow.id);
   return mapUser(userRow, enrolledCourses);
 }

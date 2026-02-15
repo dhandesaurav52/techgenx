@@ -1,149 +1,158 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  ReactNode,
-} from "react";
-import { useRouter } from "next/navigation"; // ✅ For navigation
+import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { useRouter } from "next/navigation";
 
 interface User {
+  id: number;
   fullName: string;
   email: string;
   registeredAt: string;
   enrolledCourses: string[];
-  role?: "admin" | "student"; // Added role for admin checks
-  darkMode?: boolean;
-  emailNotifications?: boolean;
-  password?: string;
+  role?: "admin" | "student";
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => boolean;
-  signup: (fullName: string, email: string, password: string) => boolean;
-  logout: () => void;
-  enrollCourse: (courseName: string) => void;
-  updateUser?: (data: Partial<User>) => void; // New: for settings updates
+  loading: boolean;
+  login: (email: string, password: string) => Promise<boolean>;
+  signup: (fullName: string, email: string, password: string) => Promise<boolean>;
+  logout: () => Promise<void>;
+  enrollCourse: (courseName: string) => Promise<boolean>;
+  updateUser: (data: Partial<Pick<User, "fullName">>) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const TOKEN_KEY = "authToken";
+const USER_KEY = "user";
+
+function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+function setSession(user: User | null, token?: string) {
+  if (typeof window === "undefined") return;
+
+  if (user) {
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+  } else {
+    localStorage.removeItem(USER_KEY);
+  }
+
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+  }
+}
+
+function clearSession() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+async function apiFetch<T>(url: string, init?: RequestInit): Promise<T | null> {
+  const token = getToken();
+  const headers = new Headers(init?.headers || {});
+  headers.set("Content-Type", "application/json");
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const response = await fetch(url, { ...init, headers });
+  if (!response.ok) return null;
+  return (await response.json()) as T;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // Load user from localStorage
   useEffect(() => {
-    const savedUser = localStorage.getItem("user");
-    if (savedUser) setUser(JSON.parse(savedUser));
-  }, []);
+    const bootstrap = async () => {
+      const savedUser = localStorage.getItem(USER_KEY);
+      if (savedUser) {
+        setUser(JSON.parse(savedUser));
+      }
 
-  // Login function
-  const login = (email: string, password: string) => {
-    const stored = localStorage.getItem("accounts");
-    if (!stored) return false;
+      const me = await apiFetch<{ user: User }>("/api/me");
+      if (me?.user) {
+        setUser(me.user);
+        setSession(me.user);
+      } else {
+        clearSession();
+      }
 
-    const accounts = JSON.parse(stored);
-    const found = accounts.find(
-      (acc: any) => acc.email === email && acc.password === password
-    );
-
-    if (found) {
-      if (!found.enrolledCourses) found.enrolledCourses = [];
-      if (!found.registeredAt) found.registeredAt = new Date().toLocaleString();
-
-      localStorage.setItem("user", JSON.stringify(found));
-      setUser(found);
-      return true;
-    }
-
-    return false;
-  };
-
-  // Signup function
-  const signup = (fullName: string, email: string, password: string) => {
-    const stored = localStorage.getItem("accounts");
-    const accounts = stored ? JSON.parse(stored) : [];
-
-    if (accounts.some((acc: any) => acc.email === email)) return false;
-
-    const newAccount: User = {
-      fullName,
-      email,
-      password,
-      registeredAt: new Date().toLocaleString(),
-      enrolledCourses: [],
-      role: "student",
-      darkMode: false,
-      emailNotifications: true,
+      setLoading(false);
     };
 
-    accounts.push(newAccount);
-    localStorage.setItem("accounts", JSON.stringify(accounts));
-    localStorage.setItem("user", JSON.stringify(newAccount));
-    setUser(newAccount);
+    void bootstrap();
+  }, []);
 
+  const login = async (email: string, password: string) => {
+    const data = await apiFetch<{ user: User; token: string }>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (!data?.user || !data.token) return false;
+    setUser(data.user);
+    setSession(data.user, data.token);
     return true;
   };
 
-  // Logout function
-  const logout = () => {
-    localStorage.removeItem("user");
+  const signup = async (fullName: string, email: string, password: string) => {
+    const data = await apiFetch<{ user: User; token: string }>("/api/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ fullName, email, password }),
+    });
+
+    if (!data?.user || !data.token) return false;
+    setUser(data.user);
+    setSession(data.user, data.token);
+    return true;
+  };
+
+  const logout = async () => {
+    await apiFetch("/api/auth/logout", { method: "POST" });
+    clearSession();
     setUser(null);
     router.push("/login");
   };
 
-  // Enroll in course
-  const enrollCourse = (courseName: string) => {
+  const enrollCourse = async (courseName: string) => {
     if (!user) {
-      alert("⚠️ Please log in to enroll in a course!");
       router.push("/login");
-      return;
+      return false;
     }
 
-    const enrolledCourses = user.enrolledCourses || [];
+    const data = await apiFetch<{ user: User }>("/api/enrollments", {
+      method: "POST",
+      body: JSON.stringify({ courseTitle: courseName }),
+    });
 
-    if (!enrolledCourses.includes(courseName)) {
-      const updatedUser = { ...user, enrolledCourses: [...enrolledCourses, courseName] };
-      setUser(updatedUser);
-      localStorage.setItem("user", JSON.stringify(updatedUser));
-
-      // Update in accounts list
-      const accounts = JSON.parse(localStorage.getItem("accounts") || "[]");
-      const index = accounts.findIndex((acc: any) => acc.email === user.email);
-      if (index !== -1) {
-        accounts[index] = updatedUser;
-        localStorage.setItem("accounts", JSON.stringify(accounts));
-      }
-
-      alert(`✅ You have successfully enrolled in ${courseName}`);
-    } else {
-      alert("You’re already enrolled in this course!");
-    }
+    if (!data?.user) return false;
+    setUser(data.user);
+    setSession(data.user);
+    return true;
   };
 
-  // ✅ Update user function (for settings like dark mode, email notifications)
-  const updateUser = (data: Partial<User>) => {
-    if (!user) return;
+  const updateUser = async (payload: Partial<Pick<User, "fullName">>) => {
+    if (!user) return false;
 
-    const updatedUser = { ...user, ...data };
-    setUser(updatedUser);
-    localStorage.setItem("user", JSON.stringify(updatedUser));
+    const data = await apiFetch<{ user: User }>("/api/me/settings", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
 
-    // Update in accounts list
-    const accounts = JSON.parse(localStorage.getItem("accounts") || "[]");
-    const index = accounts.findIndex((acc: any) => acc.email === user.email);
-    if (index !== -1) {
-      accounts[index] = updatedUser;
-      localStorage.setItem("accounts", JSON.stringify(accounts));
-    }
+    if (!data?.user) return false;
+    setUser(data.user);
+    setSession(data.user);
+    return true;
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, enrollCourse, updateUser }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, logout, enrollCourse, updateUser }}>
       {children}
     </AuthContext.Provider>
   );
