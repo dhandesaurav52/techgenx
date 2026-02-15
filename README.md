@@ -43,6 +43,18 @@ DB_PASSWORD=your_password
 DB_NAME=techgenx
 ```
 
+
+### `.env` setup
+
+A root `.env` file is included with all required variables for app + DB + compose.
+Before private deployment, update these values with your real secrets/passkeys:
+
+- `DB_PASSWORD`
+- `MYSQL_PASSWORD`
+- `MYSQL_ROOT_PASSWORD`
+
+You can keep the same variable names and only replace values on your private machine.
+
 ### API routes
 - `POST /api/auth/signup`
 - `POST /api/auth/login`
@@ -57,3 +69,17 @@ DB_NAME=techgenx
 
 ### Security note
 `passwordHash` column is in place, but current code still compares plain text values for compatibility. Move to hashed passwords (bcrypt/argon2) before production traffic.
+
+## Docker
+
+### Run with Docker Compose
+
+```bash
+docker compose -f compose-docker.yaml up --build
+```
+
+This starts:
+- `app` on `http://localhost:3000`
+- `mysql` on `localhost:3306`
+
+The MySQL container auto-runs `database/schema.sql` on first startup.
