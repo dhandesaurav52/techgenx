@@ -1,42 +1,31 @@
-export type Role = "admin" | "student";
-
 export interface UserAccount {
+  id: number;
   fullName: string;
   email: string;
-  password: string;
+  passwordHash: string;
   registeredAt: string;
   enrolledCourses: string[];
-  role: Role;
-  darkMode: boolean;
-  emailNotifications: boolean;
 }
 
 export interface Course {
+  courseId: number;
   title: string;
   slug: string;
   description: string;
   price: string;
-  duration: string;
+  createdAt: string;
 }
 
 export interface ContactMessage {
-  id: string;
+  contactId: string;
   name: string;
   email: string;
-  subject: string;
   message: string;
-  createdAt: string;
+  submittedAt: string;
 }
 
 export interface Session {
-  token: string;
-  email: string;
-  createdAt: string;
-}
-
-export interface DatabaseShape {
-  accounts: UserAccount[];
-  courses: Course[];
-  contacts: ContactMessage[];
-  sessions: Session[];
+  sessionId: string;
+  userId: number;
+  expiresAt: string;
 }

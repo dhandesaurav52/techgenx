@@ -1,191 +1,264 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { DatabaseShape, UserAccount, Course, ContactMessage, Session } from "@/lib/types";
+import { RowDataPacket } from "mysql2";
+import { getPool } from "@/lib/mysql";
+import { ContactMessage, Course, Session, UserAccount } from "@/lib/types";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const DB_PATH = path.join(DATA_DIR, "db.json");
-
-const defaultCourses: Course[] = [
-  {
-    title: "Full Stack Web Development",
-    slug: "full-stack-web-development",
-    description: "Learn HTML, CSS, JavaScript, React, Node.js, and more.",
-    price: "₹4,999",
-    duration: "3 Months",
-  },
-  {
-    title: "Data Science & Machine Learning",
-    slug: "data-science-ml",
-    description: "Python, Pandas, NumPy, ML algorithms, and real projects.",
-    price: "₹5,999",
-    duration: "4 Months",
-  },
-  {
-    title: "Cybersecurity Essentials",
-    slug: "cybersecurity-essentials",
-    description: "Protect systems, networks, and learn ethical hacking.",
-    price: "₹3,999",
-    duration: "2 Months",
-  },
-  {
-    title: "Cloud Computing with AWS",
-    slug: "cloud-computing-aws",
-    description: "Learn AWS services, deployment, and cloud architecture.",
-    price: "₹6,499",
-    duration: "3 Months",
-  },
-];
-
-const defaultDb: DatabaseShape = {
-  accounts: [],
-  courses: defaultCourses,
-  contacts: [],
-  sessions: [],
+type UserRow = RowDataPacket & {
+  id: number;
+  name: string;
+  email: string;
+  passwordHash: string;
+  createdAt: string;
 };
 
-async function ensureDb() {
-  try {
-    await readFile(DB_PATH, "utf-8");
-  } catch {
-    await mkdir(DATA_DIR, { recursive: true });
-    await writeFile(DB_PATH, JSON.stringify(defaultDb, null, 2), "utf-8");
-  }
+type CourseRow = RowDataPacket & {
+  courseId: number;
+  title: string;
+  description: string;
+  price: string;
+  createdAt: string;
+};
+
+function toSlug(title: string): string {
+  return title
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-");
 }
 
-export async function readDb(): Promise<DatabaseShape> {
-  await ensureDb();
-  const raw = await readFile(DB_PATH, "utf-8");
-  const parsed = JSON.parse(raw) as DatabaseShape;
-
+function mapCourse(row: CourseRow): Course {
   return {
-    accounts: parsed.accounts ?? [],
-    courses: parsed.courses?.length ? parsed.courses : defaultCourses,
-    contacts: parsed.contacts ?? [],
-    sessions: parsed.sessions ?? [],
+    courseId: row.courseId,
+    title: row.title,
+    slug: toSlug(row.title),
+    description: row.description,
+    price: row.price,
+    createdAt: row.createdAt,
   };
 }
 
-export async function writeDb(data: DatabaseShape): Promise<void> {
-  await mkdir(DATA_DIR, { recursive: true });
-  await writeFile(DB_PATH, JSON.stringify(data, null, 2), "utf-8");
+function mapUser(row: UserRow, enrolledCourses: string[]): UserAccount {
+  return {
+    id: row.id,
+    fullName: row.name,
+    email: row.email,
+    passwordHash: row.passwordHash,
+    registeredAt: row.createdAt,
+    enrolledCourses,
+  };
 }
 
-export function sanitizeUser(account: UserAccount) {
-  const safeUser = { ...account };
-  delete safeUser.password;
-  return safeUser;
+export function sanitizeUser(account: UserAccount): Omit<UserAccount, "passwordHash"> {
+  return {
+    id: account.id,
+    fullName: account.fullName,
+    email: account.email,
+    registeredAt: account.registeredAt,
+    enrolledCourses: account.enrolledCourses,
+  };
+}
+
+async function getEnrolledCoursesByUserId(userId: number): Promise<string[]> {
+  const pool = getPool();
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT c.title
+     FROM enrollments e
+     INNER JOIN courses c ON c.courseId = e.courseId
+     WHERE e.userId = ?
+     ORDER BY e.enrolledAt DESC`,
+    [userId]
+  );
+
+  return rows.map((row: RowDataPacket) => String(row.title));
+}
+
+async function getUserByEmail(email: string): Promise<UserRow | null> {
+  const pool = getPool();
+  const [rows] = await pool.query<UserRow[]>(
+    `SELECT id, name, email, passwordHash, createdAt
+     FROM users
+     WHERE email = ?
+     LIMIT 1`,
+    [email]
+  );
+
+  return rows[0] ?? null;
 }
 
 export async function createAccount(payload: {
   fullName: string;
   email: string;
   password: string;
-}): Promise<{ ok: true; user: Omit<UserAccount, "password"> } | { ok: false; message: string }> {
-  const db = await readDb();
+}): Promise<{ ok: true; user: Omit<UserAccount, "passwordHash"> } | { ok: false; message: string }> {
+  const pool = getPool();
   const email = payload.email.trim().toLowerCase();
 
-  if (db.accounts.some((acc) => acc.email.toLowerCase() === email)) {
+  const existing = await getUserByEmail(email);
+  if (existing) {
     return { ok: false, message: "Email already exists" };
   }
 
-  const newAccount: UserAccount = {
-    fullName: payload.fullName.trim(),
-    email,
-    password: payload.password,
-    registeredAt: new Date().toLocaleString(),
-    enrolledCourses: [],
-    role: "student",
-    darkMode: false,
-    emailNotifications: true,
+  const createdAt = new Date().toISOString();
+  await pool.query(
+    `INSERT INTO users (name, email, passwordHash, createdAt)
+     VALUES (?, ?, ?, ?)`,
+    [payload.fullName.trim(), email, payload.password, createdAt]
+  );
+
+  const insertedUser = await getUserByEmail(email);
+  if (!insertedUser) {
+    return { ok: false, message: "Unable to create user" };
+  }
+
+  return {
+    ok: true,
+    user: sanitizeUser(mapUser(insertedUser, [])),
   };
-
-  db.accounts.push(newAccount);
-  await writeDb(db);
-
-  return { ok: true, user: sanitizeUser(newAccount) };
 }
 
-export async function createSessionForUser(email: string): Promise<Session> {
-  const db = await readDb();
-  db.sessions = db.sessions.filter((s) => s.email !== email);
+export async function createSessionForUser(userId: number): Promise<Session> {
+  const pool = getPool();
+  const sessionId = randomUUID();
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  const session: Session = {
-    token: randomUUID(),
-    email,
-    createdAt: new Date().toISOString(),
-  };
+  await pool.query("DELETE FROM sessions WHERE userId = ?", [userId]);
+  await pool.query("INSERT INTO sessions (sessionId, userId, expiresAt) VALUES (?, ?, ?)", [
+    sessionId,
+    userId,
+    expiresAt,
+  ]);
 
-  db.sessions.push(session);
-  await writeDb(db);
-
-  return session;
+  return { sessionId, userId, expiresAt };
 }
 
-export async function removeSession(token: string): Promise<void> {
-  const db = await readDb();
-  db.sessions = db.sessions.filter((s) => s.token !== token);
-  await writeDb(db);
+export async function removeSession(sessionId: string): Promise<void> {
+  const pool = getPool();
+  await pool.query("DELETE FROM sessions WHERE sessionId = ?", [sessionId]);
 }
 
-export async function getUserByToken(token: string): Promise<UserAccount | null> {
-  const db = await readDb();
-  const session = db.sessions.find((s) => s.token === token);
-  if (!session) return null;
+export async function getUserByToken(sessionId: string): Promise<UserAccount | null> {
+  const pool = getPool();
+  const [rows] = await pool.query<UserRow[]>(
+    `SELECT u.id, u.name, u.email, u.passwordHash, u.createdAt
+     FROM sessions s
+     INNER JOIN users u ON u.id = s.userId
+     WHERE s.sessionId = ?
+       AND s.expiresAt > ?
+     LIMIT 1`,
+    [sessionId, new Date().toISOString()]
+  );
 
-  const user = db.accounts.find((acc) => acc.email === session.email);
-  return user ?? null;
+  if (!rows.length) return null;
+
+  const userRow = rows[0];
+  const enrolledCourses = await getEnrolledCoursesByUserId(userRow.id);
+  return mapUser(userRow, enrolledCourses);
 }
 
 export async function verifyLogin(email: string, password: string): Promise<UserAccount | null> {
-  const db = await readDb();
-  return db.accounts.find((acc) => acc.email === email.trim().toLowerCase() && acc.password === password) ?? null;
+  const pool = getPool();
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const [rows] = await pool.query<UserRow[]>(
+    `SELECT id, name, email, passwordHash, createdAt
+     FROM users
+     WHERE email = ? AND passwordHash = ?
+     LIMIT 1`,
+    [normalizedEmail, password]
+  );
+
+  if (!rows.length) return null;
+
+  const userRow = rows[0];
+  const enrolledCourses = await getEnrolledCoursesByUserId(userRow.id);
+  return mapUser(userRow, enrolledCourses);
 }
 
 export async function updateUserSettings(
-  email: string,
-  updates: Partial<Pick<UserAccount, "darkMode" | "emailNotifications" | "fullName">>
+  userId: number,
+  updates: Partial<Pick<UserAccount, "fullName">>
 ): Promise<UserAccount | null> {
-  const db = await readDb();
-  const idx = db.accounts.findIndex((acc) => acc.email === email);
-  if (idx === -1) return null;
+  const pool = getPool();
 
-  const current = db.accounts[idx];
-  db.accounts[idx] = {
-    ...current,
-    ...updates,
-    fullName: updates.fullName?.trim() || current.fullName,
-  };
+  await pool.query(
+    `UPDATE users
+     SET name = COALESCE(?, name)
+     WHERE id = ?`,
+    [updates.fullName?.trim() || null, userId]
+  );
 
-  await writeDb(db);
-  return db.accounts[idx];
+  const [rows] = await pool.query<UserRow[]>(
+    `SELECT id, name, email, passwordHash, createdAt
+     FROM users
+     WHERE id = ?
+     LIMIT 1`,
+    [userId]
+  );
+
+  if (!rows.length) return null;
+
+  const userRow = rows[0];
+  const enrolledCourses = await getEnrolledCoursesByUserId(userRow.id);
+  return mapUser(userRow, enrolledCourses);
 }
 
-export async function enrollUserInCourse(email: string, courseTitle: string): Promise<UserAccount | null> {
-  const db = await readDb();
-  const idx = db.accounts.findIndex((acc) => acc.email === email);
-  if (idx === -1) return null;
+export async function getCourses(): Promise<Course[]> {
+  const pool = getPool();
+  const [rows] = await pool.query<CourseRow[]>(
+    `SELECT courseId, title, description, price, createdAt
+     FROM courses
+     ORDER BY courseId ASC`
+  );
 
-  const user = db.accounts[idx];
-  if (!user.enrolledCourses.includes(courseTitle)) {
-    user.enrolledCourses = [...user.enrolledCourses, courseTitle];
-    db.accounts[idx] = user;
-    await writeDb(db);
-  }
-
-  return user;
+  return rows.map((row: CourseRow) => mapCourse(row));
 }
 
-export async function createContactMessage(payload: Omit<ContactMessage, "id" | "createdAt">) {
-  const db = await readDb();
-  const newMessage: ContactMessage = {
+export async function getCourseBySlug(slug: string): Promise<Course | null> {
+  const courses = await getCourses();
+  return courses.find((course) => course.slug === slug) ?? null;
+}
+
+export async function enrollUserInCourse(userId: number, courseId: number): Promise<UserAccount | null> {
+  const pool = getPool();
+  const enrollmentId = randomUUID();
+
+  await pool.query(
+    `INSERT INTO enrollments (enrollmentId, userId, courseId, enrolledAt)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE enrolledAt = VALUES(enrolledAt)`,
+    [enrollmentId, userId, courseId, new Date().toISOString()]
+  );
+
+  const [rows] = await pool.query<UserRow[]>(
+    `SELECT id, name, email, passwordHash, createdAt
+     FROM users
+     WHERE id = ?
+     LIMIT 1`,
+    [userId]
+  );
+
+  if (!rows.length) return null;
+
+  const userRow = rows[0];
+  const enrolledCourses = await getEnrolledCoursesByUserId(userRow.id);
+  return mapUser(userRow, enrolledCourses);
+}
+
+export async function createContactMessage(payload: Omit<ContactMessage, "contactId" | "submittedAt">) {
+  const pool = getPool();
+  const contactId = randomUUID();
+  const submittedAt = new Date().toISOString();
+
+  await pool.query(
+    `INSERT INTO contacts (contactId, name, email, message, submittedAt)
+     VALUES (?, ?, ?, ?, ?)`,
+    [contactId, payload.name, payload.email, payload.message, submittedAt]
+  );
+
+  return {
     ...payload,
-    id: randomUUID(),
-    createdAt: new Date().toISOString(),
+    contactId,
+    submittedAt,
   };
-
-  db.contacts.push(newMessage);
-  await writeDb(db);
-
-  return newMessage;
 }

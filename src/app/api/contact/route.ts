@@ -10,13 +10,15 @@ export async function POST(request: NextRequest) {
   const subject = body?.subject?.trim();
   const message = body?.message?.trim();
 
-  if (!name || !email || !subject || !message) {
+  if (!name || !email || !message) {
     return NextResponse.json(
-      { message: "name, email, subject and message are required" },
+      { message: "name, email and message are required" },
       { status: 400 }
     );
   }
 
-  const contact = await createContactMessage({ name, email, subject, message });
+  const normalizedMessage = subject ? `[${subject}] ${message}` : message;
+  const contact = await createContactMessage({ name, email, message: normalizedMessage });
+
   return NextResponse.json({ message: "Message received", contact }, { status: 201 });
 }

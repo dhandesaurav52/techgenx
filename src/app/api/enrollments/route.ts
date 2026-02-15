@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/api-auth";
-import { enrollUserInCourse, readDb, sanitizeUser } from "@/lib/data-store";
+import { enrollUserInCourse, getCourseBySlug, getCourses, sanitizeUser } from "@/lib/data-store";
 
 export const runtime = "nodejs";
 
@@ -23,16 +23,15 @@ export async function POST(request: NextRequest) {
   const courseSlug = typeof body?.courseSlug === "string" ? body.courseSlug : undefined;
   const courseTitle = typeof body?.courseTitle === "string" ? body.courseTitle : undefined;
 
-  const db = await readDb();
   const matched = courseSlug
-    ? db.courses.find((course) => course.slug === courseSlug)
-    : db.courses.find((course) => course.title === courseTitle);
+    ? await getCourseBySlug(courseSlug)
+    : (await getCourses()).find((course) => course.title === courseTitle);
 
   if (!matched) {
     return NextResponse.json({ message: "Course not found" }, { status: 404 });
   }
 
-  const updated = await enrollUserInCourse(auth.user.email, matched.title);
+  const updated = await enrollUserInCourse(auth.user.id, matched.courseId);
   if (!updated) {
     return NextResponse.json({ message: "User not found" }, { status: 404 });
   }

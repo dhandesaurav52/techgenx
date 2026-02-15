@@ -12,15 +12,8 @@ export async function PATCH(request: NextRequest) {
 
   const body = await request.json().catch(() => null);
   const fullName = typeof body?.fullName === "string" ? body.fullName : undefined;
-  const darkMode = typeof body?.darkMode === "boolean" ? body.darkMode : undefined;
-  const emailNotifications =
-    typeof body?.emailNotifications === "boolean" ? body.emailNotifications : undefined;
 
-  const updated = await updateUserSettings(auth.user.email, {
-    fullName,
-    darkMode,
-    emailNotifications,
-  });
+  const updated = await updateUserSettings(auth.user.id, { fullName });
 
   if (!updated) {
     return NextResponse.json({ message: "User not found" }, { status: 404 });

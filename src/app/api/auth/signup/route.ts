@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: created.message }, { status: 409 });
   }
 
-  const session = await createSessionForUser(created.user.email);
+  const session = await createSessionForUser(created.user.id);
 
-  return NextResponse.json({ user: created.user, token: session.token }, { status: 201 });
+  return NextResponse.json({ user: created.user, token: session.sessionId }, { status: 201 });
 }
