@@ -12,7 +12,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ## Backend API + MySQL schema
 
-This app now uses a MySQL database (AWS RDS-compatible) for all backend entities.
+This app now uses a MySQL database running in Docker for all backend entities.
 
 ### Required tables
 The schema includes all requested entities/fields:
@@ -27,25 +27,28 @@ The schema includes all requested entities/fields:
 - Base schema: `database/schema.sql`
 - Migration copy: `database/migrations/001_init_schema.sql`
 
-### Apply schema
+### Apply schema manually (optional)
 
 ```bash
-mysql -h <rds-endpoint> -u <user> -p < database/schema.sql
+mysql -h 127.0.0.1 -P 3306 -u "$DB_USER" -p"$DB_PASSWORD" "$DB_NAME" < database/schema.sql
 ```
 
-### `.env` setup for AWS RDS
+### `.env` setup for Docker MySQL
 
-A root `.env` file is included with all required app + RDS variables.
-Before private deployment, replace these values:
+A root `.env` file is included with required app + MySQL variables.
+Before deployment, replace secrets:
 
-- `DB_HOST` (your RDS endpoint)
 - `DB_USER`
 - `DB_PASSWORD`
 - `DB_NAME`
+- `MYSQL_ROOT_PASSWORD`
 
-Optional:
-- `DB_SSL=true` for encrypted RDS connections
-- `SESSION_TTL_HOURS` to control session expiry
+Defaults are set up for local Docker Compose usage:
+
+- `DB_HOST=mysql`
+- `DB_PORT=3306`
+- `DB_SSL=false`
+- `SESSION_TTL_HOURS=168`
 
 ### API routes
 - `POST /api/auth/signup`
@@ -60,7 +63,7 @@ Optional:
 - `POST /api/contact`
 
 ### Security note
-Passwords are now stored as hashed values in `passwordHash` (using Node crypto scrypt). For production hardening, consider managed secret rotation and stricter TLS verification for RDS.
+Passwords are stored as hashed values in `passwordHash` (using Node crypto scrypt).
 
 ## Docker
 
@@ -70,4 +73,12 @@ Passwords are now stored as hashed values in `passwordHash` (using Node crypto s
 docker compose -f compose-docker.yaml up --build
 ```
 
-This starts only the `app` container on `http://localhost:3000` and connects it to your external AWS RDS MySQL database using values from `.env`.
+This starts:
+- `mysql` container on port `3306`
+- `app` container on `http://localhost:3000`
+
+Schema is auto-initialized from `database/schema.sql` on first MySQL startup.
+
+## CI/CD
+
+GitHub Actions workflow is removed. Use Jenkins with the repository `Jenkinsfile`.
