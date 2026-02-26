@@ -5,6 +5,12 @@ pipeline {
     timestamps()
   }
 
+  environment {
+    COMPOSE_FILE = 'compose-docker.yaml'
+    APP_SERVICE = 'app'
+    APP_URL = 'http://127.0.0.1:3000'
+  }
+
   stages {
     stage('Checkout') {
       steps {
@@ -12,22 +18,46 @@ pipeline {
       }
     }
 
-    stage('Install') {
+    stage('Verify Docker Tooling') {
       steps {
-        sh 'npm ci'
+        sh '''
+          docker --version
+          docker compose version
+        '''
       }
     }
 
-    stage('Build') {
+    stage('Deploy with Docker Compose') {
       steps {
-        sh 'npm run build'
+        sh '''
+          set -eux
+          docker compose -f "$COMPOSE_FILE" down --remove-orphans || true
+          docker compose -f "$COMPOSE_FILE" up -d --build
+        '''
+      }
+    }
+
+    stage('Health Check') {
+      steps {
+        sh '''
+          set -eux
+          timeout 120 sh -c 'until docker compose -f "$COMPOSE_FILE" exec -T "$APP_SERVICE" wget -qO- "$APP_URL" > /dev/null; do sleep 5; done'
+          docker compose -f "$COMPOSE_FILE" ps
+        '''
       }
     }
   }
 
   post {
     always {
-      archiveArtifacts artifacts: '.next/**', allowEmptyArchive: true
+      sh '''
+        docker compose -f "$COMPOSE_FILE" logs --no-color > docker-compose.log || true
+      '''
+      archiveArtifacts artifacts: 'docker-compose.log', allowEmptyArchive: true
+    }
+
+    failure {
+      sh 'docker compose -f "$COMPOSE_FILE" ps || true'
     }
   }
 }
