@@ -15,6 +15,12 @@ pipeline {
                 '''
             }
         }
+        stage('node install') {
+            steps {
+                sh '''
+                  apt install nodejs
+                '''
+            }
 
         stage('Run Shell') {
             steps {
@@ -26,6 +32,12 @@ pipeline {
             steps {
                 sh '''
                   npm run build
+                '''
+            }
+        stage('build') {
+            steps {
+                sh '''
+                  npm run dev
                 '''
             }
         }
