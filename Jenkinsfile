@@ -6,16 +6,18 @@ pipeline {
     }
 
     stages {
-        stage('Hello') {
+        stage('Git Pull') {
             steps {
-                echo 'Hello from Jenkins!'
+                sh '''
+                git clone https://github.com/dhandesaurav52/techgenx
+                '''
             }
         }
 
         stage('Run Shell') {
             steps {
                 sh '''
-                  npm run build
+                  npm install
                 '''
             }
         }
