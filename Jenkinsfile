@@ -8,36 +8,37 @@ pipeline {
     }
 
     stages {
-        stage('Git Pull') {
+
+        stage('Git Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Node Install') {
             steps {
                 sh '''
-                git clone https://github.com/dhandesaurav52/techgenx
+                    apt-get update
+                    apt-get install -y nodejs npm
+
+                    node --version
+                    npm --version
                 '''
             }
         }
-        stage('node install') {
-            steps {
-                sh '''
-                  apt install nodejs
-                '''
-            }
 
-        stage('Run Shell') {
+        stage('Install Dependencies') {
             steps {
                 sh '''
-                  npm install
+                    npm install
                 '''
             }
-        stage('build') {
+        }
+
+        stage('Build') {
             steps {
                 sh '''
-                  npm run build
-                '''
-            }
-        stage('build') {
-            steps {
-                sh '''
-                  npm run dev
+                    npm run build
                 '''
             }
         }
